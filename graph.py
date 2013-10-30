@@ -125,48 +125,89 @@ class Graph:
 		return 1.0 / noBranches
 
 
-	def filterMarkovian(self, stateProbs, coverSet):
+	def filterMarkovian(self, stateProbs, limitLen):
 		# states: dictionary of candidate segments id and its probabilities
 		# stateProbs = { segment_Id: probabilites }
-		# coverSet: set of candidate segments in need of visiting
-		#            the coverSet is removed until it is empty
-		#            function stops when coverSet is empty
+		# limitLen: when the maximum length exceeds limitLen, stop filtering
 		# !!! assume Markovian
 
 		segments = self.segments
 		adjList = self.adjList
 
 
-		if len(coverSet) == 0:
+		if limitLen <= 0:
 			return stateProbs
 
 
 		states = stateProbs.keys()
 		nxtStateProbs = {}
 
-
+		maxSegLen = 0.0
 		for s in states:
-
-			if s in coverSet:
-				coverSet.remove(s)
 
 			# staying on same segment
 			if s not in nxtStateProbs:
 				nxtStateProbs[s] = 0.0
 			nxtStateProbs[s] += stateProbs[s] * self.routePredict(s, [s])
 
+			maxSegLen = max(maxSegLen, self.segments[s].length)
+
 			# transition to the next segments
 			for sid in adjList[segments[s].end]:
-				
-				if sid in coverSet:
-					coverSet.remove(sid)
 
 				if sid not in nxtStateProbs:
 					nxtStateProbs[sid] = 0.0
 				nxtStateProbs[sid] += stateProbs[s] * self.routePredict(sid, [s])		
 
+				maxSegLen = max(maxSegLen, self.segments[sid].length)
 
-		return self.filterMarkovian(nxtStateProbs, coverSet)
+		limitLen -= maxSegLen # reduce the limitLen by the maximum length of visited path
+
+		return self.filterMarkovian(nxtStateProbs, limitLen)
+
+
+	# def filterMarkovian(self, stateProbs, coverSet):
+	# 	# states: dictionary of candidate segments id and its probabilities
+	# 	# stateProbs = { segment_Id: probabilites }
+	# 	# coverSet: set of candidate segments in need of visiting
+	# 	#            the coverSet is removed until it is empty
+	# 	#            function stops when coverSet is empty
+	# 	# !!! assume Markovian
+
+	# 	segments = self.segments
+	# 	adjList = self.adjList
+
+
+	# 	if len(coverSet) == 0:
+	# 		return stateProbs
+
+
+	# 	states = stateProbs.keys()
+	# 	nxtStateProbs = {}
+
+
+	# 	for s in states:
+
+	# 		if s in coverSet:
+	# 			coverSet.remove(s)
+
+	# 		# staying on same segment
+	# 		if s not in nxtStateProbs:
+	# 			nxtStateProbs[s] = 0.0
+	# 		nxtStateProbs[s] += stateProbs[s] * self.routePredict(s, [s])
+
+	# 		# transition to the next segments
+	# 		for sid in adjList[segments[s].end]:
+				
+	# 			if sid in coverSet:
+	# 				coverSet.remove(sid)
+
+	# 			if sid not in nxtStateProbs:
+	# 				nxtStateProbs[sid] = 0.0
+	# 			nxtStateProbs[sid] += stateProbs[s] * self.routePredict(sid, [s])		
+
+
+	# 	return self.filterMarkovian(nxtStateProbs, coverSet)
 
 
 	def BFS(self, startSegId, length):
@@ -200,7 +241,7 @@ class Graph:
 		return paths
 
 
-	def filter(self, stateProbs, coverSet, numBacks):
+	def filter(self, stateProbs, limitLen, numBacks):
 	# P(x1,x2,x3) = P(x1|x2,x3) * P(x2|x3) * P(x3)
 	# bel0(x3)
 	# bel1(x2) = sum_x3( P(x2|x3) * P(x3) )
@@ -215,33 +256,79 @@ class Graph:
 		adjList = self.adjList
 		BFS = self.BFS
 
-		if len(coverSet) == 0:
-			# !!! need to check if stateProbs cover all cases (i steps away where i < numBacks)
-			#     if not, include other stateProbs of smaller numBacks --> take cared of in the BFS function
-			# !!! what if coverSet cannot be covered all? --> Use maximum length instead
-			print "empty coverSet"
+		if limitLen <= 0:
 			return stateProbs
 
 		states = stateProbs.keys()
 		nxtStateProbs = {}
 
+		maxSegLen = 0.0
 
 		for s in states:
 
 			paths = BFS(s, numBacks)
 
 			for p in paths:
-				l = p[len(p) - 1]
+				pl = 0.0
+				for i in p:
+					pl += self.segments[i].length
+				maxSegLen = max(maxSegLen, pl)
 
-				if l in coverSet:
-					coverSet.remove(l)
+			for p in paths:
+				l = p[len(p) - 1]
 
 				if l not in nxtStateProbs:
 					nxtStateProbs[l] = 0
 
 				nxtStateProbs[l] += stateProbs[p[0]] * self.routePredict(l, p[:len(p)-1])
 
-		return self.filter(nxtStateProbs, coverSet, numBacks)
+		limitLen -= maxSegLen # reduce the limitLen by the maximum length of visited path
+
+		return self.filter(nxtStateProbs, limitLen, numBacks)
+
+
+	# def filter(self, stateProbs, coverSet, numBacks):
+	# # P(x1,x2,x3) = P(x1|x2,x3) * P(x2|x3) * P(x3)
+	# # bel0(x3)
+	# # bel1(x2) = sum_x3( P(x2|x3) * P(x3) )
+	# # bel2(x1) = sum_x2_x3( P(x1|x2,x3) * P(x2|x3) * bel0(x3) )
+	# # need backward pointers? -> create a reverse adjList: rAdjList 
+	# # --> no need for backward pointers (no need rAdjList)
+	# # stateProbs 2 steps aways
+	# # also need stateProbs 1 steps aways to cover all cases
+	# # REQUIRE: numBacks >= 2 (2 ~ Markovian)
+	
+	# 	segments = self.segments
+	# 	adjList = self.adjList
+	# 	BFS = self.BFS
+
+	# 	if len(coverSet) == 0:
+	# 		# !!! need to check if stateProbs cover all cases (i steps away where i < numBacks)
+	# 		#     if not, include other stateProbs of smaller numBacks --> take cared of in the BFS function
+	# 		# !!! what if coverSet cannot be covered all? --> Use maximum length instead
+	# 		print "empty coverSet"
+	# 		return stateProbs
+
+	# 	states = stateProbs.keys()
+	# 	nxtStateProbs = {}
+
+
+	# 	for s in states:
+
+	# 		paths = BFS(s, numBacks)
+
+	# 		for p in paths:
+	# 			l = p[len(p) - 1]
+
+	# 			if l in coverSet:
+	# 				coverSet.remove(l)
+
+	# 			if l not in nxtStateProbs:
+	# 				nxtStateProbs[l] = 0
+
+	# 			nxtStateProbs[l] += stateProbs[p[0]] * self.routePredict(l, p[:len(p)-1])
+
+	# 	return self.filter(nxtStateProbs, coverSet, numBacks)
 
 
 	def findCandidate(self, startSegId, target, radius, initLimit, step, candidateSegs, candidatePoints):
