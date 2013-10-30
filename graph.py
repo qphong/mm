@@ -119,10 +119,11 @@ class Graph:
 		segments = self.segments
 		adjList = self.adjList
 
-		prevSeg = past[len(past) - 1]
-		noBranches = len(adjList[ segments[prevSeg].end ]) + 1 # including staying on same segments
+		p = 1.0
+		for s in past:
+			p *= 1.0 / (len(adjList[ self.segments[s].end ]) + 1.0)
 
-		return 1.0 / noBranches
+		return p
 
 
 	def filterMarkovian(self, stateProbs, limitLen):
@@ -136,6 +137,7 @@ class Graph:
 
 
 		if limitLen <= 0:
+			print 'limitLen:', limitLen
 			return stateProbs
 
 
@@ -257,6 +259,7 @@ class Graph:
 		BFS = self.BFS
 
 		if limitLen <= 0:
+			print 'limitLen:', limitLen
 			return stateProbs
 
 		states = stateProbs.keys()
