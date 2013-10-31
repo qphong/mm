@@ -20,8 +20,8 @@ MAX_L = 5
 # REGION_DEG = 0.0007587
 # REGION = 20
 REGION_DEG = 70 # meters, this is not degree anymore! after UTM conversion
-SIGMA_EMIS = 20
-SIGMA_TRANS = 20
+SIGMA_EMIS = 17
+SIGMA_TRANS = 5
 
 MAX_DIST = 1875.0
 

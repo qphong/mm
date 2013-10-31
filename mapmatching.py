@@ -5,415 +5,347 @@ from graph import *
 from log import *
 
 
+class MapMatching:
 
-print "Reading coordinates"
-coords = readCoord("data/coords.csv")
+	def __init__(self):
 
-print "Reading attributes"
-segments = readAtt("data/att.csv")
+		print "Reading coordinates"
+		self.coords = readCoord("data/coords.csv")
 
-G = Graph(coords, segments)
+		print "Reading attributes"
+		self.segments = readAtt("data/att.csv")
 
-gpsLocs = []
-logTProbs = [[[]]] * MAX_L # idx = to, from cand idx, to cand idx
-logEProbs = [[]] * MAX_L
-memoiz = [[]] * MAX_L
-vtrace = [[]] * MAX_L
-cPoints = [[]] * MAX_L
-cSegIds = [[]] * MAX_L
-mapSegIds = []
-maxDistance = [] 
-refLIdx = 0
+		self.G = Graph(self.coords, self.segments)
 
-
-def PREV(idx, maxIdx):
-
-	if idx == 0:
-		return maxIdx - 1
-	return idx - 1
+		self.gpsLocs = []
+		self.logTProbs = [[[]]] * MAX_L # idx = to, from cand idx, to cand idx
+		self.logEProbs = [[]] * MAX_L
+		self.memoiz = [[]] * MAX_L
+		self.vtrace = [[]] * MAX_L
+		self.cPoints = [[]] * MAX_L
+		self.cSegIds = [[]] * MAX_L
+		self.mapSegIds = []
+		self.maxDistance = [] 
+		self.refLIdx = 0 # index 0 of global array corresponds to index self.refLIdx in local array
 
 
-def NEXT(idx, maxIdx):
+	def PREV(self, idx, maxIdx):
 
-	if idx == maxIdx - 1:
-		return 0
-	return idx + 1
-
-
-# def initRefLIdx(lidx):
-# 	# lidx is value for local index corresponding to global index of value 0
-# 	# ! should be called only once
-
-# 	global refLIdx
-# 	refLIdx = lidx
-# !!! alway set refLIdx = 0
+		if idx == 0:
+			return maxIdx - 1
+		return idx - 1
 
 
-def getLIdxFrom(gIdx):
-	# get local index from global index
-	# ! should set the refLIdx before calling this function
+	def NEXT(self, idx, maxIdx):
 
-	return (gIdx + refLIdx) % MAX_L
+		if idx == maxIdx - 1:
+			return 0
+		return idx + 1
 
 
-def findCandidate(gIdx, maxDistance):
-	# required: maxDistance = [INF] * len(cSegIds[PREV(lIdx,MAX_L)])
+	def getLIdxFrom(self, gIdx):
+		# get local index from global index
+		# ! should set the refLIdx before calling this function
 
-	global G
-	global gpsLocs
-	global cSegIds
-	global cPoints
+		return (gIdx + self.refLIdx) % MAX_L
 
-	lIdx = getLIdxFrom(gIdx)
 
-	i = PREV(lIdx, MAX_L)
-	
-	if ( len(cPoints[i]) == 0 ):
+	def findCandidate(self, gIdx, maxDistance):
+		# required: maxDistance = [INF] * len(cSegIds[PREV(lIdx,MAX_L)])
 
-		[segIds, pnts] = G.scanAll(gpsLocs[gIdx], REGION_DEG)
+		lIdx = self.getLIdxFrom(gIdx)
+
+		i = self.PREV(lIdx, MAX_L)
 		
-		cSegIds[lIdx] = list(segIds)
-		cPoints[lIdx] = list(pnts)
+		if ( len(self.cPoints[i]) == 0 ):
 
-	else:
+			[segIds, pnts] = self.G.scanAll(self.gpsLocs[gIdx], REGION_DEG)
+			
+			self.cSegIds[lIdx] = list(segIds)
+			self.cPoints[lIdx] = list(pnts)
+
+		else:
+			
+			cSegs = set()
+			pnts = []
+			for j in range(len(self.cSegIds[i])):
+				initLimit = self.gpsLocs[gIdx - 1].distTo(self.gpsLocs[gIdx]) * 3
+				maxDistance[j] = self.G.findCandidate(self.cSegIds[i][j], self.gpsLocs[gIdx], \
+					REGION_DEG, initLimit, initLimit / 2.0, cSegs, pnts)
+			
+			self.cPoints[lIdx] = list(pnts)
+			self.cSegIds[lIdx] = list(cSegs)
+
+
+	def calEProb(self, gIdx):
+		# return emission probabilities
+
+		probs = []
+		lIdx = self.getLIdxFrom(gIdx)
+
+		for i in range(len(self.cPoints[lIdx])):
+			d = self.gpsLocs[gIdx].greatCircleDist( self.cPoints[lIdx][i] )
+			probs.append( - d * d * 2 / (SIGMA_EMIS * SIGMA_EMIS) )
+
+		normalizeLogVector(probs)
 		
-		cSegs = set()
-		pnts = []
-		for j in range(len(cSegIds[i])):
-			initLimit = gpsLocs[gIdx - 1].distTo(gpsLocs[gIdx]) * 3
-			maxDistance[j] = G.findCandidate(cSegIds[i][j], gpsLocs[gIdx], REGION_DEG, initLimit, initLimit / 2.0, cSegs, pnts)
+		logEmsProbs(probs, gIdx, self.cSegIds[lIdx], self.G.segments)
+
+		return probs
+
+
+	def isUturn(self, path):
+		# input: path: sequence of segments
+		# output: True if there exists a Uturn in path (only check the starting and ending node)
+
+		l = len(path)
+		return ( l > 1 and (  (self.G.segments[path[0]].start == self.G.segments[path[1]].end \
+						 and self.G.segments[path[0]].end == self.G.segments[path[1]].start) \
+		              or(self.G.segments[path[l-1]].start == self.G.segments[path[l-2]].end \
+		              	 and self.G.segments[path[l-1]].end == self.G.segments[path[l-2]].start) ) )
+
+
+	def calTProb(self, gIdx, maxDistance):
+
+		lIdx = self.getLIdxFrom(gIdx)
+
+		pre = self.PREV(lIdx, MAX_L)
+		tprobs = [[]] * len(self.cSegIds[pre])
+
+		for i in range(len(self.cSegIds[pre])):
+
+			fromSI = self.cSegIds[pre][i]
+			tprobs[i] = [0] * len(self.cSegIds[lIdx])
+			for j in range(len(self.cSegIds[lIdx])):
+
+				toSI = self.cSegIds[lIdx][j]
+				straightDist = 	self.cPoints[pre][i].greatCircleDist(self.cPoints[lIdx][j])
+				shortestDist = 0.0
+				uturn = False
+
+				if fromSI != toSI:
+
+					shortest = self.G.shortestPath_Astar(self.G.segments[fromSI].end, \
+						self.G.segments[toSI].start, maxDistance[i], toSI)
+
+					shortestPath = shortest[1]
+					shortestPath.insert(0, fromSI)
+					shortestPath.append(toSI)
+
+					uturn = self.isUturn(shortestPath)
+
+					shortestDist = shortest[0]
+					shortestDist += self.cPoints[pre][i].distTo( self.G.points[ self.G.segments[fromSI].end ] ) \
+					                + self.cPoints[lIdx][j].distTo( self.G.points[ self.G.segments[toSI].start ] )
+						
+				else:
+					shortestDist = self.cPoints[pre][i].distTo( self.cPoints[lIdx][j] )
+
+				if shortestDist >= INF:
+					tprobs[i][j] = -INF
+				else:
+					tprobs[i][j] = - (straightDist - shortestDist) * (straightDist - shortestDist) \
+						/ (20 * SIGMA_TRANS * SIGMA_TRANS)
+
+				if uturn:
+					tprobs[i][j] -= log(10.0)
+
+			normalizeLogVector(tprobs[i])
+
+		logTransProbs(tprobs, gIdx, self.cSegIds[pre], self.cSegIds[lIdx], self.G.segments)
+
+		return tprobs 
+
+
+	def execute(self):
+
+		print "Reading GPS points"
+		self.gpsLocs = list(readGPS("data/taxi.txt"))
+
+		for i in range(MAX_L):
+			self.logTProbs[i] = [[]]
+			self.logEProbs[i] = []
+			self.memoiz[i] = []
+			self.vtrace[i] = []
+			self.cPoints[i] = []
+			self.cSegIds[i] = []
 		
-		cPoints[lIdx] = list(pnts)
-		cSegIds[lIdx] = list(cSegs)
+		self.mapSegIds = []
+
+		for i in range(len(self.gpsLocs)):
+			self.mapGPSAt(i)
+
+		self.visualize()
 
 
-def calEProb(gIdx):
-	# return emission probabilities
+	def executeGreedy(self):
 
-	global gpsLocs
-	global cPoints
+		print "Reading GPS points"
+		self.gpsLocs = list(readGPS("data/taxi.txt"))
 
-	probs = []
-	lIdx = getLIdxFrom(gIdx)
+		for i in range(MAX_L):
+			self.logTProbs[i] = [[]]
+			self.logEProbs[i] = []
+			self.memoiz[i] = []
+			self.vtrace[i] = []
+			self.cPoints[i] = []
+			self.cSegIds[i] = []
+		
+		self.mapSegIds = []
 
-	for i in range(len(cPoints[lIdx])):
-		d = gpsLocs[gIdx].greatCircleDist( cPoints[lIdx][i] )
-		probs.append( - d * d * 2 / (SIGMA_EMIS * SIGMA_EMIS) )
+		for i in range(len(self.gpsLocs)):
+			self.mapGPSGreedyAt(i)
 
-	normalizeLogVector(probs)
-	
-	logEmsProbs(probs, gIdx, cSegIds[lIdx], G.segments)
-
-	return probs
-
-
-def isUturn(path):
-	# input: path: sequence of segments
-	# output: True if there exists a Uturn in path (only check the starting and ending node)
-
-	l = len(path)
-	return ( l > 1 and (  (G.segments[path[0]].start == G.segments[path[1]].end \
-					 and G.segments[path[0]].end == G.segments[path[1]].start) \
-	              or(G.segments[path[l-1]].start == G.segments[path[l-2]].end \
-	              	 and G.segments[path[l-1]].end == G.segments[path[l-2]].start) ) )
+		self.visualize()
 
 
-# def isUturn2(path):
+	def entropyOfLogProbs(self, vect):
 
-# 	l = len(path)
-# 	return ( l > 1 and ( (path[0].start == path[1].end \
-# 		                  and path[0].end == path[1].start) \
-# 	                   or(path[l-1].start == path[l-2].end \
-# 	                   	  and path[l-1].end == path[l-2].start) ) )
-
+		ttl = 0
+		for v in vect:
+			ttl += ( -v * exp(v) )
+		return ttl
 
 
-def calTProb(gIdx, maxDistance):
+	def mapGPSGreedyAt(self, gIdx):
 
-	global cSegIds
-	global cPoints
-	global G
+		lIdx = self.getLIdxFrom(gIdx)
 
-	lIdx = getLIdxFrom(gIdx)
+		print gIdx
+		print "   Clearing"
+		self.logTProbs[lIdx] = [[]]
+		self.logEProbs[lIdx] = []
+		self.memoiz[lIdx] = []
+		self.vtrace[lIdx] = []
+		self.cPoints[lIdx] = []
+		self.cSegIds[lIdx] = []
 
-	pre = PREV(lIdx, MAX_L)
-	tprobs = [[]] * len(cSegIds[pre])
+		print "   Find candidates"
+		self.maxDistance = [INF] * len(self.cSegIds[self.PREV(lIdx,MAX_L)])
+		self.findCandidate(gIdx, self.maxDistance)
 
-	for i in range(len(cSegIds[pre])):
+		if len(self.cSegIds[lIdx]) == 0:
+			self.mapSegIds.append(-1) # cannot find any candidate segments
+			return
 
-		fromSI = cSegIds[pre][i]
-		tprobs[i] = [0] * len(cSegIds[lIdx])
-		for j in range(len(cSegIds[lIdx])):
+		print "   Calculate emission probabilities"
+		self.logEProbs[lIdx] = self.calEProb(gIdx)
 
-			toSI = cSegIds[lIdx][j]
-			straightDist = 	cPoints[pre][i].greatCircleDist(cPoints[lIdx][j])
-			shortestDist = 0.0
-			uturn = False
+		e = self.entropyOfLogProbs(self.logEProbs[lIdx])
+		if e > 1.5:
+		
+			maxValue = max(self.logEProbs[lIdx])
+			maxIdx = 0
+			for i in range(len(self.logEProbs[lIdx])):
+				if self.logEProbs[lIdx][i] == maxValue:
+					maxIdx = i
 
-			if fromSI != toSI:
+			self.mapSegIds.append(self.cSegIds[lIdx][i])
 
-				shortest = G.shortestPath_Astar(G.segments[fromSI].end, G.segments[toSI].start, maxDistance[i], toSI)
+		else:
 
-				shortestPath = shortest[1]
-				shortestPath.insert(0, fromSI)
-				shortestPath.append(toSI)
+			self.mapSegIds.append(0)
+			
 
-				uturn = isUturn(shortestPath)
+	def mapGPSAt(self, gIdx):
 
-				shortestDist = shortest[0]
-				shortestDist += cPoints[pre][i].distTo( G.points[ G.segments[fromSI].end ] ) \
-				                + cPoints[lIdx][j].distTo( G.points[ G.segments[toSI].start ] )
-					
-			else:
-				shortestDist = cPoints[pre][i].distTo( cPoints[lIdx][j] )
+		lIdx = self.getLIdxFrom(gIdx)
 
-			if shortestDist >= INF:
-				tprobs[i][j] = -INF
-			else:
-				tprobs[i][j] = - (straightDist - shortestDist) * (straightDist - shortestDist) / (20 * SIGMA_TRANS * SIGMA_TRANS)
+		print gIdx
+		print "   Clearing"
+		self.logTProbs[lIdx] = [[]]
+		self.logEProbs[lIdx] = []
+		self.memoiz[lIdx] = []
+		self.vtrace[lIdx] = []
+		self.cPoints[lIdx] = []
+		self.cSegIds[lIdx] = []
 
-			if uturn:
-				tprobs[i][j] -= log(10.0)
+		print "   Find candidates"
+		self.maxDistance = [INF] * len(self.cSegIds[self.PREV(lIdx,MAX_L)])
+		self.findCandidate(gIdx, self.maxDistance)
 
-		normalizeLogVector(tprobs[i])
-
-	logTransProbs(tprobs, gIdx, cSegIds[pre], cSegIds[lIdx], G.segments)
-
-	return tprobs 
-
-
-def execute():
-
-	global gpsLocs
-	global mapSegIds
-	global logTProbs
-	global logEProbs
-	global memoiz
-	global vtrace
-	global cPoints
-	global cSegIds
-
-	print "Reading GPS points"
-	gpsLocs = list(readGPS("data/taxi.txt"))
-
-	for i in range(MAX_L):
-		logTProbs[i] = [[]]
-		logEProbs[i] = []
-		memoiz[i] = []
-		vtrace[i] = []
-		cPoints[i] = []
-		cSegIds[i] = []
-	
-	mapSegIds = []
-
-	for i in range(len(gpsLocs)):
-		mapGPSAt(i)
-
-	visualize()
+		if len(self.cSegIds[lIdx]) == 0:
+			self.mapSegIds.append(-1) # cannot find any candidate segments
+			return
 
 
-def executeGreedy():
-
-	global gpsLocs
-	global mapSegIds
-	global logTProbs
-	global logEProbs
-	global memoiz
-	global vtrace
-	global cPoints
-	global cSegIds
-
-	print "Reading GPS points"
-	gpsLocs = list(readGPS("data/taxi.txt"))
-
-	for i in range(MAX_L):
-		logTProbs[i] = [[]]
-		logEProbs[i] = []
-		memoiz[i] = []
-		vtrace[i] = []
-		cPoints[i] = []
-		cSegIds[i] = []
-	
-	mapSegIds = []
-
-	for i in range(len(gpsLocs)):
-		mapGPSGreedyAt(i)
-
-	visualize()
+		print "   Calculate emission probabilities"
+		self.logEProbs[lIdx] = self.calEProb(gIdx)
 
 
-def entropyOfLogProbs(vect):
+		curMax = 0 # how many past matchings
+		i = self.PREV(lIdx, MAX_L)
+		while len(self.cPoints[i]) != 0 and curMax < MAX_L - 1:
+			i = self.PREV(i, MAX_L)
+			curMax += 1
 
-	ttl = 0
-	for v in vect:
-		ttl += ( -v * exp(v) )
-	return ttl
+
+		print "   Calculate transition probabilities"
+		if curMax == 0: # no past matching
+			maxIdx = 0
+
+			for i in range(len(self.logEProbs[lIdx])):
+		
+				if self.logEProbs[lIdx][i] > self.logEProbs[lIdx][maxIdx]:
+					maxIdx = i
+				self.memoiz[lIdx].append(self.logEProbs[lIdx][i])
+
+			self.mapSegIds.append(self.cSegIds[lIdx][maxIdx])
+			return
+
+		else:
+
+			self.logTProbs[lIdx] = self.calTProb(gIdx, self.maxDistance)
 
 
-def mapGPSGreedyAt(gIdx):
+		self.memoiz[lIdx] = [0.0] * len(self.cPoints[lIdx])
+		self.vtrace[lIdx] = [0] * len(self.cPoints[lIdx])
+		pre = self.PREV(lIdx, MAX_L)
 
-	global G
-	global gpsLocs
-	global logTProbs
-	global logEProbs
-	global memoiz
-	global vtrace
-	global cPoints
-	global cSegIds
-	global mapSegIds
-	global maxDistance
+		for j in range(len(self.cSegIds[lIdx])):
+			maxIdx = 0
+			maxValue = self.memoiz[pre][maxIdx] + self.logTProbs[lIdx][maxIdx][j]
+			for i in range(len(self.cSegIds[pre])):
+				tmp = self.memoiz[pre][i] + self.logTProbs[lIdx][i][j]
+				if tmp > maxValue:
+					maxValue = tmp
+					maxIdx = i
 
-	lIdx = getLIdxFrom(gIdx)
+			self.memoiz[lIdx][j] = maxValue + self.logEProbs[lIdx][j]
+			self.vtrace[lIdx][j] = maxIdx
+		
 
-	print gIdx
-	print "   Clearing"
-	logTProbs[lIdx] = [[]]
-	logEProbs[lIdx] = []
-	memoiz[lIdx] = []
-	vtrace[lIdx] = []
-	cPoints[lIdx] = []
-	cSegIds[lIdx] = []
+		print "   Mapmatch and Update results"
+		maxIdx = 0
+		for i in range(len(self.memoiz[lIdx])):
+			if self.memoiz[lIdx][i] > self.memoiz[lIdx][maxIdx]:
+				maxIdx = i
+		self.mapSegIds.append(self.cSegIds[lIdx][maxIdx])
 
-	print "   Find candidates"
-	maxDistance = [INF] * len(cSegIds[PREV(lIdx,MAX_L)])
-	findCandidate(gIdx, maxDistance)
+		tmp = lIdx
+		for i in range(curMax):
+			maxIdx = self.vtrace[tmp][maxIdx]
+			tmp = self.PREV(tmp, MAX_L)
+			idx = len(self.mapSegIds) - i - 2
 
-	if len(cSegIds[lIdx]) == 0:
-		mapSegIds.append(-1) # cannot find any candidate segments
+			if self.mapSegIds[idx] != self.cSegIds[tmp][maxIdx]:
+				self.mapSegIds[idx] = self.cSegIds[tmp][maxIdx]
+
 		return
 
-	print "   Calculate emission probabilities"
-	logEProbs[lIdx] = calEProb(gIdx)
 
-	e = entropyOfLogProbs(logEProbs[lIdx])
-	if e > 1.5:
-	
-		maxValue = max(logEProbs[lIdx])
-		maxIdx = 0
-		for i in range(len(logEProbs[lIdx])):
-			if logEProbs[lIdx][i] == maxValue:
-				maxIdx = i
+	def visualize(self):
 
-		mapSegIds.append(cSegIds[lIdx][i])
+		infos = range(len(self.gpsLocs))
+		for i in range(len(infos)):
+			infos[i] = str(infos[i])
 
-	else:
+		segs = []
+		for sid in self.mapSegIds:
+			segs.append(self.G.segments[sid])
 
-		mapSegIds.append(0)
-		
-
-def mapGPSAt(gIdx):
-
-	global G
-	global gpsLocs
-	global logTProbs
-	global logEProbs
-	global memoiz
-	global vtrace
-	global cPoints
-	global cSegIds
-	global mapSegIds
-	global maxDistance
-
-	lIdx = getLIdxFrom(gIdx)
-
-	print gIdx
-	print "   Clearing"
-	logTProbs[lIdx] = [[]]
-	logEProbs[lIdx] = []
-	memoiz[lIdx] = []
-	vtrace[lIdx] = []
-	cPoints[lIdx] = []
-	cSegIds[lIdx] = []
-
-	print "   Find candidates"
-	maxDistance = [INF] * len(cSegIds[PREV(lIdx,MAX_L)])
-	findCandidate(gIdx, maxDistance)
-
-	if len(cSegIds[lIdx]) == 0:
-		mapSegIds.append(-1) # cannot find any candidate segments
-		return
-
-
-	print "   Calculate emission probabilities"
-	logEProbs[lIdx] = calEProb(gIdx)
-
-
-	curMax = 0 # how many past matchings
-	i = PREV(lIdx, MAX_L)
-	while len(cPoints[i]) != 0 and curMax < MAX_L - 1:
-		i = PREV(i, MAX_L)
-		curMax += 1
-
-
-	print "   Calculate transition probabilities"
-	if curMax == 0: # no past matching
-		maxIdx = 0
-
-		for i in range(len(logEProbs[lIdx])):
-	
-			if logEProbs[lIdx][i] > logEProbs[lIdx][maxIdx]:
-				maxIdx = i
-			memoiz[lIdx].append(logEProbs[lIdx][i])
-
-		mapSegIds.append(cSegIds[lIdx][maxIdx])
-		return
-
-	else:
-
-		logTProbs[lIdx] = calTProb(gIdx, maxDistance)
-
-
-	memoiz[lIdx] = [0.0] * len(cPoints[lIdx])
-	vtrace[lIdx] = [0] * len(cPoints[lIdx])
-	pre = PREV(lIdx, MAX_L)
-
-	for j in range(len(cSegIds[lIdx])):
-		maxIdx = 0
-		maxValue = memoiz[pre][maxIdx] + logTProbs[lIdx][maxIdx][j]
-		for i in range(len(cSegIds[pre])):
-			tmp = memoiz[pre][i] + logTProbs[lIdx][i][j]
-			if tmp > maxValue:
-				maxValue = tmp
-				maxIdx = i
-
-		memoiz[lIdx][j] = maxValue + logEProbs[lIdx][j]
-		vtrace[lIdx][j] = maxIdx
-	
-
-	print "   Mapmatch and Update results"
-	maxIdx = 0
-	for i in range(len(memoiz[lIdx])):
-		if memoiz[lIdx][i] > memoiz[lIdx][maxIdx]:
-			maxIdx = i
-	mapSegIds.append(cSegIds[lIdx][maxIdx])
-
-	tmp = lIdx
-	for i in range(curMax):
-		maxIdx = vtrace[tmp][maxIdx]
-		tmp = PREV(tmp, MAX_L)
-		idx = len(mapSegIds) - i - 2
-		if mapSegIds[idx] != cSegIds[tmp][maxIdx]:
-			mapSegIds[idx] = cSegIds[tmp][maxIdx]
-
-	return
-
-
-def visualize():
-
-	global mapSegIds
-	global G
-	global gpsLocs
-
-	infos = range(len(gpsLocs))
-	for i in range(len(infos)):
-		infos[i] = str(infos[i])
-
-	segs = []
-	for sid in mapSegIds:
-		segs.append(G.segments[sid])
-
-	logPoints(gpsLocs, infos)
-	logSegments(segs, G.points, infos)
+		logPoints(self.gpsLocs, infos)
+		logSegments(segs, self.G.points, infos)
 
 
 
