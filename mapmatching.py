@@ -1,4 +1,8 @@
 
+"""
+This file contains definition for class Mapmatching (do map matching)
+"""
+
 from config import *
 from readData import *
 from graph import *
@@ -15,21 +19,23 @@ class MapMatching:
 		print "Reading attributes"
 		self.segments = readAtt("data/att.csv")
 
-		self.G = Graph(self.coords, self.segments)
+		self.G = Graph(self.coords, self.segments) # Graph representing the road network
 
-		self.gpsLocs = []
-		self.logTProbs = [[[]]] * MAX_L # idx = to, from cand idx, to cand idx
-		self.logEProbs = [[]] * MAX_L
-		self.memoiz = [[]] * MAX_L
-		self.vtrace = [[]] * MAX_L
-		self.cPoints = [[]] * MAX_L
-		self.cSegIds = [[]] * MAX_L
-		self.mapSegIds = []
-		self.maxDistance = [] 
+		self.gpsLocs = [] # list of GPS points
+		self.logTProbs = [[[]]] * MAX_L # idx = [to time idx, from cand idx, to cand idx]
+		self.logEProbs = [[]] * MAX_L # idx = [time idx, cand idx]
+		self.memoiz = [[]] * MAX_L # memoiz[i][j] = V(cs_{i,j})
+		self.vtrace = [[]] * MAX_L # trace back, to get the most likely sequence in Viterbi algorithm
+		self.cPoints = [[]] * MAX_L # cPoints[i] = list of candidate Points of GPS point i
+		self.cSegIds = [[]] * MAX_L # cSegIds[i] = list of candidate road segments of GPS point i
+		self.mapSegIds = [] # mapSegIds[i] = segment id of the mapmatching result for GPS point i
+		self.maxDistance = [] # for limit the A* search in finding the transition probability
 		self.refLIdx = 0 # index 0 of global array corresponds to index self.refLIdx in local array
 
 
 	def PREV(self, idx, maxIdx):
+		# return the previous local index of idx
+		# in an array A[0..5], PREV(0) = 5, PREV(3) = 2
 
 		if idx == 0:
 			return maxIdx - 1
@@ -37,6 +43,7 @@ class MapMatching:
 
 
 	def NEXT(self, idx, maxIdx):
+		# return the next local index of idx
 
 		if idx == maxIdx - 1:
 			return 0
@@ -106,6 +113,7 @@ class MapMatching:
 
 
 	def calTProb(self, gIdx, maxDistance):
+		# calculate transition probabilties
 
 		lIdx = self.getLIdxFrom(gIdx)
 
@@ -158,6 +166,7 @@ class MapMatching:
 
 
 	def execute(self):
+		# execute the mapmatching process
 
 		print "Reading GPS points"
 		self.gpsLocs = list(readGPS("data/taxi.txt"))
@@ -179,7 +188,7 @@ class MapMatching:
 
 
 	def executeGreedy(self):
-
+		# execute the greedy mapmatching (only consider proximity (emission probability))
 		print "Reading GPS points"
 		self.gpsLocs = list(readGPS("data/taxi.txt"))
 
@@ -200,6 +209,8 @@ class MapMatching:
 
 
 	def entropyOfLogProbs(self, vect):
+		# vect is list of log probabilities
+		# return the entropy of this list of log probabilties
 
 		ttl = 0
 		for v in vect:
@@ -208,6 +219,7 @@ class MapMatching:
 
 
 	def mapGPSGreedyAt(self, gIdx):
+		# mapmatching a gpsLocs[gIdx] using only emission probability (proximity)
 
 		lIdx = self.getLIdxFrom(gIdx)
 
@@ -248,6 +260,7 @@ class MapMatching:
 			
 
 	def mapGPSAt(self, gIdx):
+		# mapmatching gpsLocs[gIdx] using both transition and emission probabilities
 
 		lIdx = self.getLIdxFrom(gIdx)
 
@@ -335,7 +348,9 @@ class MapMatching:
 
 
 	def visualize(self):
-
+		# log the result of mapmatching (gpsLocs and mapSegIds)
+		# to Google map for visualization
+		
 		infos = range(len(self.gpsLocs))
 		for i in range(len(infos)):
 			infos[i] = str(infos[i])

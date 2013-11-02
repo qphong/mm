@@ -1,4 +1,8 @@
 
+"""
+This file contains definition of class Graph
+"""
+
 from config import *
 import Queue
 import sets
@@ -7,7 +11,7 @@ class Graph:
 	
 	points = []
 	segments = [] 
-	adjList = [[]] # list of segments connecting to a point idx
+	adjList = [[]] # Adjacency List: list of segments connecting to a point idx
 	
 	
 	def __init__(self, points, segments):
@@ -30,7 +34,8 @@ class Graph:
 
 	
 	def shortestPath_Dijkstra(self, startNodeId, endNodeId, limit=INF):
-		# Dijkstra
+		# Dijkstra shortest Path from startNodeId to endNodeId
+		# limit is the maximum path length that the Dijkstra visits
 
 		segments = self.segments
 		dist = [INF] * len(self.points)
@@ -59,7 +64,7 @@ class Graph:
 			
 						
 	def shortestPath_Astar(self, startNodeId, endNodeId, limit=INF, endSegId=-1):
-		# A* search
+		# A* search from startNodeId to endNodeId
 		# avoid turning back, including endSegId if specified
 		#       since startSeg is not included, don't need to check for first segment
 
@@ -213,8 +218,8 @@ class Graph:
 
 
 	def BFS(self, startSegId, length):
-	# tested
 	# allow to stay on the same segment
+	# breadth first search from startSegId, with length limit = length
 
 		segments = self.segments
 		points = self.points
@@ -244,15 +249,18 @@ class Graph:
 
 
 	def filter(self, stateProbs, limitLen, numBacks):
-	# P(x1,x2,x3) = P(x1|x2,x3) * P(x2|x3) * P(x3)
-	# bel0(x3)
-	# bel1(x2) = sum_x3( P(x2|x3) * P(x3) )
-	# bel2(x1) = sum_x2_x3( P(x1|x2,x3) * P(x2|x3) * bel0(x3) )
-	# need backward pointers? -> create a reverse adjList: rAdjList 
-	# --> no need for backward pointers (no need rAdjList)
-	# stateProbs 2 steps aways
-	# also need stateProbs 1 steps aways to cover all cases
-	# REQUIRE: numBacks >= 2 (2 ~ Markovian)
+		# startProbs = {segmentId:probability}
+		# limitLen: algorithm terminates when limitLen reaches
+		# numBack: >= 2 (2 == Markovian)
+
+		# P(x1,x2,x3) = P(x1|x2,x3) * P(x2|x3) * P(x3)
+		# bel0(x3)
+		# bel1(x2) = sum_x3( P(x2|x3) * P(x3) )
+		# bel2(x1) = sum_x2_x3( P(x1|x2,x3) * P(x2|x3) * bel0(x3) )
+		# need backward pointers? -> create a reverse adjList: rAdjList 
+		# --> no need for backward pointers (no need rAdjList)
+		# stateProbs 2 steps aways
+		# also need stateProbs 1 steps aways to cover all cases
 	
 		segments = self.segments
 		adjList = self.adjList
@@ -343,6 +351,7 @@ class Graph:
 		#        each time limit is increase by step value
 		# notes: A* avoids turning back from 2nd segments onwards
 		# return [candidateSegs, candidatePoints, limit]
+		#         where: limit is maximum path length that A* visits
 
 		startNodeId = self.segments[startSegId].end
 

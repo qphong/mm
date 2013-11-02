@@ -1,4 +1,9 @@
 
+"""
+This file contains functions to log information: transition and emission probabilites 
+to text file; segments and points to javascript file for visualizing on Google map.
+"""
+
 from config import *
 
 
@@ -6,6 +11,7 @@ def logPoints(pnts, infos):
 	# input: list of points pnts of type Point
 	#        list of infos for these points in order
 	#                infos of type string
+	# Points are written into PATH_PNTS to visualize on Google map
 
 	with open(PATH_PNTS, "w") as f:
 		f.write("var points = [\n")
@@ -34,6 +40,7 @@ def logSegments(segs, pnts, infos):
 	#        list of points pnts of type Point
 	#        list of infos for these segments in order
 	#                infos of type string
+	# Segments are written into PATH_SEGS to visualize on Google map
 
 	with open(PATH_SEGS, "w") as f:
 		f.write("var segs = [\n")
@@ -64,6 +71,7 @@ def logSegments(segs, pnts, infos):
 
 
 def logEmsProbs(emsProbs, gpsIdx, segIds, segments):
+	# append emission probabilites to file PATH_LOGS/ems.txt
 
 	with open(PATH_LOGS + "ems.txt", "a") as f:
 
@@ -75,6 +83,7 @@ def logEmsProbs(emsProbs, gpsIdx, segIds, segments):
 
 
 def logTransProbs(transProbs, gpsIdx, fromSegIds, toSegIds, segments):
+	# append transition probabilites to file PATH_LOGS/trans.txt
 
 	with open(PATH_LOGS + "trans.txt", "a") as f:
 		
@@ -89,6 +98,8 @@ def logTransProbs(transProbs, gpsIdx, fromSegIds, toSegIds, segments):
 
 
 def logSegmentIds(segIds, segs, pnts):
+	# segments with segIds are written to file PATH_SEGS 
+	# for visualizing on Google map
 
 	with open(PATH_SEGS, "w") as f:
 		f.write("var segs = [\n")

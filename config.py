@@ -1,5 +1,10 @@
 
 
+"""
+This file contains constants in program, file paths, common functions,
+and definition of class: Point and Segment
+"""
+
 from math import *
 import UTM
 
@@ -28,12 +33,12 @@ MAX_DIST = 1875.0
 
 
 def deg2rad(x):
-	
+	# convert degree to radian
 	return x * pi / 180.0
 	
 
 def rad2deg(x):
-	
+	# convert radian to degree
 	return x * 180.0 / pi
 
 
@@ -60,7 +65,8 @@ def timeDiff(t1, t2):
 	
 
 def normalizeLogVector(lvect):
-	# modified lvect: nomalized log vector
+	# modified lvect (vector of log probabilities)
+	# nomalized log vector
 
 	m = max(lvect)
 	cvect = lvect[:]
@@ -106,6 +112,7 @@ class Point:
 	def greatCircleDist(self, p):
 		# return the great circle distance from point self to p
 		
+
 		# if self.distTo(p) < EPS:
 		# 	return 0.0
 		
@@ -115,7 +122,8 @@ class Point:
 
 		# return R * innerAngle
 		
-		return self.distTo(p)
+
+		return self.distTo(p) # UTM coordinates
 
 	
 	def dist2Line(self, a, b):

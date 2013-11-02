@@ -1,4 +1,9 @@
 
+"""
+This file contains functions for reading data files (coordinates of points, 
+road segments, GPS points)
+"""
+
 import csv
 from config import *
 
