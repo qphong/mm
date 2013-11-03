@@ -4,6 +4,7 @@ This file contains definition of class Graph
 """
 
 from config import *
+import predTest as pred
 import Queue
 import sets
 
@@ -124,9 +125,13 @@ class Graph:
 		segments = self.segments
 		adjList = self.adjList
 
-		p = 1.0
-		for s in past:
-			p *= 1.0 / (len(adjList[ self.segments[s].end ]) + 1.0)
+		# assume uniform distribution
+		# p = 1.0
+		# for s in past:
+		# 	p *= 1.0 / (len(adjList[ self.segments[s].end ]) + 1.0)
+
+		# use route prediction
+		p = pred.calProbOf(cur, past)
 
 		return p
 
